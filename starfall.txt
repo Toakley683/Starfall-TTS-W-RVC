@@ -1,0 +1,180 @@
+--@name Text To Speach
+--@author Toakley682, Sirrus
+--@shared
+
+function customSoundFade( SoundObject, Minimum, Maximum, Distance, MaxVolume )
+    
+    SoundObject:setFade( Maximum, Maximum )
+
+    local Max = Maximum - math.clamp( Minimum, 0, Maximum - 1 )
+
+    local SetVolume = 1 - ( math.clamp( Distance - Minimum, 0, Max ) / Max )
+    
+    local Volume = math.clamp( SetVolume * MaxVolume, 0, MaxVolume )
+    
+    SoundObject:setVolume( Volume )
+    
+end
+
+function textToSpeach( Language, Text, Speach, Callback )
+    
+    bass.loadURL( Text, "3d", function( Sound, Err, ErrName )
+        
+        if ErrName != "" then print( ErrName ) end
+        
+        if Speach != nil then
+            
+            if Speach:isValid() then
+                
+                Speach:stop()
+                
+            end
+            
+        end
+        
+        if Sound == nil then return end
+        if Sound:isValid() == false then return end
+        
+        Callback( Sound )
+        
+        hook.add( "think", "SoundSet", function()
+            
+            Sound:setPos( owner():getShootPos() )
+            customSoundFade( Sound, 300, 1000, player():getShootPos():getDistance( owner():getShootPos() ), 8 )
+            
+        end)
+        
+    end)
+    
+end
+
+if CLIENT then
+    
+    local Speach = nil
+    
+    net.receive( "GetTranslation", function()
+        
+        local Text = net.readString()
+                
+        if Speach != nil then 
+            
+            if Speach:isValid() then
+                
+                hook.remove( "think", "SoundSet" )
+                Speach:stop() 
+                
+            end
+            
+        end
+        
+        textToSpeach( "en-gb", Text, Speach, function( SFX )
+        
+            Speach = SFX
+        
+        end)
+        
+    end)
+    
+    net.receive( "HiddenMessage", function()
+        
+        local Data = net.readTable()
+        
+        local Text = Data[ "Text" ]
+        local Player = Data[ "Player" ]
+        
+        if Player == owner() then
+            
+            if player() == owner() then
+                
+                local Message = Text
+    
+                local HTTPPattern = "(http(s))|"
+                local WWWPattern = "(www)"
+                
+                local Skip = { "^^", ":D", ":)", ";0", ":0", ":o", ":O", ";o", ";O" }
+                
+                if string.match( Message, HTTPPattern ) then return end
+                if string.match( Message, WWWPattern ) then return end
+                
+                for _, Data in pairs( Skip ) do
+                    
+                    Message = string.replace( Message, Data, "" )
+                    
+                end
+                    
+                Message = string.replace( Message, "%", "percent" )
+                
+                if Message == "" then return end
+    
+                local VoiceID = ""
+                local Stability = 0.57
+                local similarityBoost = 0.47
+                
+                local SendRequest = http.urlEncode( Message )
+                
+                local NGROKURL = "" // Make sure there's no Slash on the end!
+                
+                local Headers = {}
+                
+                Headers[ "ngrok-skip-browser-warning" ] = "NoWarning"
+                
+                local URL = NGROKURL.."/"..VoiceID.."/"..Stability.."/"..similarityBoost.."/"..SendRequest
+                
+                http.get( URL, function( Body, length, headers, code )
+                    
+                    printConsole( Body )
+                
+                    net.start( "SendMessage" )
+                    net.writeString( Body )
+                    net.send()
+                    
+                end, function( Reason )
+                    
+                    print( Reason )
+                    
+                end, Headers )
+                
+            end
+            
+        end
+    
+    end)
+    
+else
+    
+    local HideChat = false
+    
+    local PlayerChats = {}
+    
+    hook.add( "PlayerSay", "", function( Player, Text )
+        
+        if Player == owner() then
+            
+            local Data = {}
+            
+            Data[ "Text" ] = Text
+            Data[ "Player" ] = Player
+            
+            net.start( "HiddenMessage" )
+            net.writeTable( Data )
+            net.send()
+            
+            if not HideChat then return end
+            
+            return ""
+            
+        end
+        
+    end)
+    
+    net.receive( "SendMessage", function( Length, Plr )
+        
+        local Text = net.readString()
+        
+        net.start( "GetTranslation" )
+        net.writeString( Text )
+        net.send()
+        
+    end)
+    
+end
